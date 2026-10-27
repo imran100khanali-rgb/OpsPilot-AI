@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+.npm/
+
+# Environment files - strictly ignore secrets
+.env
+.env.*
+!.env.example
+*.env.local
+
+# Session & cookie scratch files - never commit credentials
+cookie.txt
+*cookie*.txt
+*.cookies
+
+
+# Build artifacts
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# OS and Editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Temporary directories
+tmp/
+temp/
