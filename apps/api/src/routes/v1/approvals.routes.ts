@@ -19,19 +19,22 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
 
     const result = await query<Approval>(
       `SELECT
-         id,
-         organization_id AS "organizationId",
-         task_id AS "taskId",
-         requested_by AS "requestedBy",
-         reviewed_by AS "reviewedBy",
-         title,
-         status,
-         notes,
-         decided_at AS "decidedAt",
-         created_at AS "createdAt"
-       FROM approvals
-       WHERE organization_id = $1
-       ORDER BY created_at DESC`,
+         a.id,
+         a.organization_id AS "organizationId",
+         a.task_id AS "taskId",
+         a.requested_by AS "requestedBy",
+         TRIM(u.first_name || ' ' || u.last_name) AS "requestedByName",
+         a.reviewed_by AS "reviewedBy",
+         a.title,
+         a.status,
+         a.notes,
+         (a.status = 'pending' AND a.created_at <= CURRENT_TIMESTAMP - INTERVAL '48 hours') AS "isAging",
+         a.decided_at AS "decidedAt",
+         a.created_at AS "createdAt"
+       FROM approvals a
+       LEFT JOIN users u ON u.id = a.requested_by AND u.organization_id = a.organization_id
+       WHERE a.organization_id = $1
+       ORDER BY a.created_at DESC`,
       [orgId],
     );
 

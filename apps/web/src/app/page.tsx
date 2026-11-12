@@ -7,14 +7,16 @@ import { ExecutiveKpis } from '../components/ExecutiveKpis';
 import { RiskIntelligenceFeed } from '../components/RiskIntelligenceFeed';
 import { TrendChart } from '../components/TrendChart';
 import { DateRangeFilter } from '../components/DateRangeFilter';
-import { fetchDashboardSummary, fetchDashboardTrends } from '../lib/api-client';
-import { DashboardSummaryResponse, TrendDataPoint } from '@opspilot/shared';
+import { fetchDashboardSummary, fetchDashboardTrends, fetchProjects } from '../lib/api-client';
+import { DashboardSummaryResponse, TrendDataPoint, Project } from '@opspilot/shared';
 
 export default function ExecutiveDashboardPage() {
   const [summary, setSummary] = useState<DashboardSummaryResponse | null>(null);
   const [trends, setTrends] = useState<TrendDataPoint[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [loadingTrends, setLoadingTrends] = useState(true);
+  const [loadingProjects, setLoadingProjects] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Filter state
@@ -24,6 +26,7 @@ export default function ExecutiveDashboardPage() {
 
   const loadDashboard = useCallback(async () => {
     setLoadingSummary(true);
+    setLoadingProjects(true);
     setErrorMessage(null);
 
     const summaryRes = await fetchDashboardSummary({
@@ -38,6 +41,15 @@ export default function ExecutiveDashboardPage() {
       setSummary(summaryRes.data);
     }
     setLoadingSummary(false);
+
+    const projectsRes = await fetchProjects({
+      status: status !== 'all' ? status : undefined,
+      limit: 20,
+    });
+    if (projectsRes.data?.items) {
+      setProjects(projectsRes.data.items);
+    }
+    setLoadingProjects(false);
   }, [startDate, endDate, status]);
 
   const loadTrends = useCallback(async () => {
@@ -121,11 +133,11 @@ export default function ExecutiveDashboardPage() {
                   letterSpacing: '-0.02em',
                 }}
               >
-                Executive Operations Intelligence
+                iBirds AI Delivery Intelligence
               </h1>
               <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
-                Unified executive visibility across project health, risk velocity, and accounts
-                receivable follow-ups.
+                Salesforce &amp; Cloud Delivery Command Center — Executive risk radar, deliverable
+                SLA health, and root-cause intelligence.
               </p>
             </div>
 
@@ -241,6 +253,223 @@ export default function ExecutiveDashboardPage() {
 
           {/* Real PostgreSQL-backed KPI Cards */}
           <ExecutiveKpis kpis={summary?.kpis || null} loading={loadingSummary} />
+
+          {/* Project Health Matrix */}
+          <div
+            className="card"
+            style={{ padding: '1.5rem', marginBottom: '1.5rem' }}
+            id="project-health-matrix-section"
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1.25rem',
+                borderBottom: '1px solid var(--border-color)',
+                paddingBottom: '0.85rem',
+                flexWrap: 'wrap',
+                gap: '0.5rem',
+              }}
+            >
+              <div>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Project Health Matrix
+                </h2>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                  Executive delivery health across Salesforce &amp; Cloud accounts, practice areas,
+                  and primary delivery risks
+                </p>
+              </div>
+              <span
+                className="badge badge-info"
+                style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem', fontWeight: 600 }}
+              >
+                {projects.length} Active Streams
+              </span>
+            </div>
+
+            {loadingProjects ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="skeleton" style={{ height: '48px', width: '100%' }} />
+                ))}
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="empty-state">
+                <div className="empty-icon">📁</div>
+                <div className="empty-title">No Delivery Streams Found</div>
+                <p className="empty-desc">
+                  No project workstreams match the current filters. Please adjust status or date
+                  range.
+                </p>
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.86rem' }}>
+                  <thead>
+                    <tr
+                      style={{
+                        borderBottom: '2px solid var(--border-color)',
+                        textAlign: 'left',
+                        color: 'var(--text-muted)',
+                        fontSize: '0.76rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Project / Client</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Practice Area</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Health Status</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Delivery Lead</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Overdue Deliverables</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Target Go-Live / Due</th>
+                      <th style={{ padding: '0.75rem 0.65rem' }}>Primary Risk</th>
+                      <th style={{ padding: '0.75rem 0.65rem', textAlign: 'right' }}>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {projects.map((proj) => {
+                      const health = proj.healthStatus || 'green';
+                      const practiceArea = getPracticeArea(proj);
+                      const overdueCount = proj.overdueDeliverables || 0;
+                      const targetDate = proj.targetGoLive
+                        ? new Date(proj.targetGoLive).toLocaleDateString()
+                        : 'No target SLA set';
+                      const lead = proj.deliveryLead || 'Unassigned Lead';
+                      const riskText =
+                        proj.primaryRisk ||
+                        (health === 'red'
+                          ? 'Critical delivery blocker'
+                          : health === 'amber'
+                            ? 'Milestone delay risk'
+                            : 'On track');
+
+                      const healthBadgeClass =
+                        health === 'red'
+                          ? 'badge-danger'
+                          : health === 'amber'
+                            ? 'badge-warning'
+                            : 'badge-success';
+
+                      return (
+                        <tr
+                          key={proj.id}
+                          style={{
+                            borderBottom: '1px solid var(--border-color)',
+                            transition: 'background-color 0.15s ease',
+                          }}
+                        >
+                          <td style={{ padding: '0.85rem 0.65rem' }}>
+                            <Link
+                              href={`/projects/${proj.id}`}
+                              style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+                            >
+                              <div style={{ fontWeight: 700, color: 'var(--text-primary)' }}>
+                                {proj.name}
+                              </div>
+                              {proj.description && (
+                                <div
+                                  style={{
+                                    fontSize: '0.76rem',
+                                    color: 'var(--text-muted)',
+                                    marginTop: '0.15rem',
+                                  }}
+                                >
+                                  {proj.description.slice(0, 75)}...
+                                </div>
+                              )}
+                            </Link>
+                          </td>
+                          <td style={{ padding: '0.85rem 0.65rem' }}>
+                            <span
+                              style={{
+                                padding: '0.2rem 0.5rem',
+                                borderRadius: 'var(--radius-sm)',
+                                backgroundColor: 'var(--bg-subtle)',
+                                border: '1px solid var(--border-color)',
+                                fontSize: '0.76rem',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {practiceArea}
+                            </span>
+                          </td>
+                          <td style={{ padding: '0.85rem 0.65rem' }}>
+                            <span
+                              className={`badge ${healthBadgeClass}`}
+                              style={{
+                                fontWeight: 700,
+                                textTransform: 'uppercase',
+                                fontSize: '0.72rem',
+                              }}
+                            >
+                              {health === 'red'
+                                ? '🔴 RED'
+                                : health === 'amber'
+                                  ? '🟡 AMBER'
+                                  : '🟢 GREEN'}
+                            </span>
+                          </td>
+                          <td
+                            style={{
+                              padding: '0.85rem 0.65rem',
+                              color:
+                                lead === 'Unassigned Lead'
+                                  ? 'var(--text-muted)'
+                                  : 'var(--text-primary)',
+                              fontWeight: 500,
+                            }}
+                          >
+                            {lead}
+                          </td>
+                          <td style={{ padding: '0.85rem 0.65rem' }}>
+                            {overdueCount > 0 ? (
+                              <span className="badge badge-danger">{overdueCount} overdue</span>
+                            ) : (
+                              <span className="badge badge-success">0 overdue</span>
+                            )}
+                          </td>
+                          <td
+                            style={{
+                              padding: '0.85rem 0.65rem',
+                              fontSize: '0.8rem',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            {targetDate}
+                          </td>
+                          <td
+                            style={{
+                              padding: '0.85rem 0.65rem',
+                              fontSize: '0.8rem',
+                              color:
+                                health === 'red'
+                                  ? '#ef4444'
+                                  : health === 'amber'
+                                    ? '#f59e0b'
+                                    : 'var(--text-secondary)',
+                            }}
+                          >
+                            {riskText}
+                          </td>
+                          <td style={{ padding: '0.85rem 0.65rem', textAlign: 'right' }}>
+                            <Link
+                              href={`/projects/${proj.id}`}
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
+                            >
+                              Drill Down →
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
 
           {/* Operations Trends Chart */}
           <TrendChart trends={trends} loading={loadingTrends} />
@@ -407,10 +636,31 @@ export default function ExecutiveDashboardPage() {
         }}
       >
         <div className="container">
-          OpsPilot AI Executive Platform • Multi-Tenant Organization Isolation • Zero Hardcoded
-          Values
+          iBirds AI Delivery Intelligence • Salesforce &amp; Cloud Delivery Command Center •
+          Multi-Tenant Isolation • Zero Hardcoded Values
         </div>
       </footer>
     </div>
   );
+}
+
+function getPracticeArea(project: Project): string {
+  if (project.practiceArea) return project.practiceArea;
+  const text = `${project.name} ${project.description || ''}`.toLowerCase();
+  if (text.includes('health') || text.includes('patient') || text.includes('ehr'))
+    return 'Salesforce Health Cloud';
+  if (text.includes('cpq') || text.includes('billing') || text.includes('quote'))
+    return 'Salesforce CPQ & Billing';
+  if (text.includes('service') || text.includes('omni') || text.includes('call center'))
+    return 'Service Cloud & Omni-Channel';
+  if (text.includes('financial') || text.includes('fsc') || text.includes('wealth'))
+    return 'Financial Services Cloud';
+  if (
+    text.includes('kubernetes') ||
+    text.includes('observability') ||
+    text.includes('telemetry') ||
+    text.includes('cluster')
+  )
+    return 'Cloud Architecture & DevOps';
+  return 'Salesforce Enterprise Core';
 }

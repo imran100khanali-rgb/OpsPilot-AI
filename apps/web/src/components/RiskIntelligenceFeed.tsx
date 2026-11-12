@@ -35,125 +35,206 @@ export const RiskIntelligenceFeed: React.FC<RiskIntelligenceFeedProps> = ({ risk
           marginBottom: '1.25rem',
           borderBottom: '1px solid var(--border-color)',
           paddingBottom: '0.85rem',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
         }}
       >
         <div>
-          <h2 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            Deterministic Risk Intelligence Feed
+          <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+            Top Delivery Risks &amp; Impediments
           </h2>
-          <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Rule-based evaluations for overdue milestones, project blockers, and stalled approvals
+          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+            Live delivery risk radar evaluating milestone SLAs, project blockers, and stalled
+            approvals
           </p>
         </div>
         <span
           className="badge badge-info"
-          style={{ fontSize: '0.75rem', padding: '0.25rem 0.65rem' }}
+          style={{ fontSize: '0.78rem', padding: '0.3rem 0.75rem', fontWeight: 600 }}
         >
-          {risks.length} Detected Risks
+          {risks.length} Actionable Risks Detected
         </span>
       </div>
 
       {risks.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon">🛡️</div>
-          <div className="empty-title">Zero Operational Risks Identified</div>
+          <div className="empty-title">Zero Delivery Risks Identified</div>
           <p className="empty-desc">
-            All tasks are within deadline SLAs, no projects are blocked, and approvals are flowing
-            smoothly.
+            All Salesforce &amp; Cloud workstreams are on schedule, zero critical blockers, and
+            approvals are flowing smoothly.
           </p>
         </div>
       ) : (
-        <div>
-          {risks.map((risk) => (
-            <div key={risk.id} className={`risk-item ${risk.severity}`} id={`risk-${risk.id}`}>
-              <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  marginBottom: '0.4rem',
-                  flexWrap: 'wrap',
-                  gap: '0.5rem',
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span
-                    className={`badge ${
-                      risk.severity === 'critical'
-                        ? 'badge-danger'
-                        : risk.severity === 'high'
-                          ? 'badge-warning'
-                          : 'badge-info'
-                    }`}
-                  >
-                    {risk.severity}
-                  </span>
-                  <span
-                    style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}
-                  >
-                    {risk.title}
-                  </span>
-                </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          {risks.map((risk) => {
+            const streamName =
+              risk.sourceRecord.projectName ||
+              (risk.sourceRecord.type === 'project'
+                ? risk.sourceRecord.name
+                : 'General Operations');
+            const ownerName = risk.sourceRecord.ownerName || 'Unassigned';
+            const dueDateDisplay = risk.sourceRecord.dueDate
+              ? new Date(risk.sourceRecord.dueDate).toLocaleDateString()
+              : 'No target SLA date configured';
+            const projectDrillDownId =
+              risk.sourceRecord.projectId ||
+              (risk.sourceRecord.type === 'project' ? risk.sourceRecord.id : null);
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span
+            return (
+              <div
+                key={risk.id}
+                className={`risk-item ${risk.severity}`}
+                id={`risk-${risk.id}`}
+                style={{ padding: '1.1rem 1.25rem' }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: '0.6rem',
+                    flexWrap: 'wrap',
+                    gap: '0.6rem',
+                  }}
+                >
+                  <div
                     style={{
-                      fontSize: '0.75rem',
-                      color: 'var(--text-muted)',
-                      backgroundColor: 'var(--bg-subtle)',
-                      padding: '0.15rem 0.5rem',
-                      borderRadius: 'var(--radius-sm)',
-                      border: '1px solid var(--border-color)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.6rem',
+                      flexWrap: 'wrap',
                     }}
                   >
-                    Source: {risk.sourceRecord.type.toUpperCase()} • ID:{' '}
-                    {risk.sourceRecord.id.slice(0, 8)}...
+                    <span
+                      className={`badge ${
+                        risk.severity === 'critical'
+                          ? 'badge-danger'
+                          : risk.severity === 'high'
+                            ? 'badge-warning'
+                            : 'badge-info'
+                      }`}
+                      style={{ textTransform: 'uppercase', fontWeight: 700, fontSize: '0.72rem' }}
+                    >
+                      {risk.severity}
+                    </span>
+                    <span
+                      style={{ fontWeight: 700, fontSize: '0.96rem', color: 'var(--text-primary)' }}
+                    >
+                      {risk.title}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    {projectDrillDownId && (
+                      <Link
+                        href={`/projects/${projectDrillDownId}`}
+                        className="btn btn-primary btn-sm"
+                        style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
+                      >
+                        Inspect Stream →
+                      </Link>
+                    )}
+                    {risk.sourceRecord.type === 'task' && (
+                      <Link
+                        href="/tasks"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '0.25rem 0.65rem', fontSize: '0.75rem' }}
+                      >
+                        View Task
+                      </Link>
+                    )}
+                  </div>
+                </div>
+
+                {/* Metadata Attribution Bar */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    marginBottom: '0.65rem',
+                    flexWrap: 'wrap',
+                    fontSize: '0.78rem',
+                  }}
+                >
+                  <span
+                    style={{
+                      padding: '0.2rem 0.55rem',
+                      borderRadius: 'var(--radius-sm)',
+                      backgroundColor: 'var(--bg-subtle)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-primary)',
+                      fontWeight: 600,
+                    }}
+                  >
+                    📁 Stream: {streamName}
                   </span>
-                  {risk.sourceRecord.type === 'project' && (
-                    <Link href="/projects" className="btn btn-secondary btn-sm">
-                      View Project
-                    </Link>
-                  )}
-                  {risk.sourceRecord.type === 'task' && (
-                    <Link href="/tasks" className="btn btn-secondary btn-sm">
-                      View Task
-                    </Link>
-                  )}
+                  <span
+                    style={{
+                      padding: '0.2rem 0.55rem',
+                      borderRadius: 'var(--radius-sm)',
+                      backgroundColor: 'var(--bg-subtle)',
+                      border: '1px solid var(--border-color)',
+                      color:
+                        ownerName === 'Unassigned' ? 'var(--text-muted)' : 'var(--text-primary)',
+                    }}
+                  >
+                    👤 Owner: <strong>{ownerName}</strong>
+                  </span>
+                  <span
+                    style={{
+                      padding: '0.2rem 0.55rem',
+                      borderRadius: 'var(--radius-sm)',
+                      backgroundColor: 'var(--bg-subtle)',
+                      border: '1px solid var(--border-color)',
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    📅 Target Due: {dueDateDisplay}
+                  </span>
+                </div>
+
+                {/* Deterministic Explanation */}
+                <p
+                  style={{
+                    fontSize: '0.86rem',
+                    color: 'var(--text-secondary)',
+                    marginBottom: '0.65rem',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {risk.explanation}
+                </p>
+
+                {/* Actionable Remediation Banner */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    fontSize: '0.8rem',
+                    color: 'var(--accent-primary)',
+                    fontWeight: 600,
+                    backgroundColor: 'var(--accent-primary-subtle)',
+                    padding: '0.45rem 0.75rem',
+                    borderRadius: 'var(--radius-sm)',
+                    width: 'fit-content',
+                  }}
+                >
+                  <span>✦ RECOMMENDED NEXT STEP:</span>
+                  <span>{risk.suggestedAction}</span>
                 </div>
               </div>
-
-              {/* Deterministic Explanation */}
-              <p
-                style={{
-                  fontSize: '0.85rem',
-                  color: 'var(--text-secondary)',
-                  marginBottom: '0.5rem',
-                  lineHeight: 1.45,
-                }}
-              >
-                {risk.explanation}
-              </p>
-
-              {/* Actionable Recommendation */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  fontSize: '0.78rem',
-                  color: 'var(--accent-primary)',
-                  fontWeight: 600,
-                  backgroundColor: 'var(--accent-primary-subtle)',
-                  padding: '0.35rem 0.65rem',
-                  borderRadius: 'var(--radius-sm)',
-                  width: 'fit-content',
-                }}
-              >
-                <span>✦ RECOMMENDED REMEDIATION:</span>
-                <span>{risk.suggestedAction}</span>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

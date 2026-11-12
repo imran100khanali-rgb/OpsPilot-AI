@@ -43,7 +43,13 @@ export async function executeTool(
           p.updated_at AS "updatedAt",
           COUNT(t.id)::int AS "taskCount",
           COUNT(t.id) FILTER (WHERE t.status = 'done')::int AS "completedTaskCount",
-          COUNT(t.id) FILTER (WHERE t.status = 'blocked')::int AS "blockedTaskCount"
+          COUNT(t.id) FILTER (WHERE t.status = 'blocked')::int AS "blockedTaskCount",
+          COUNT(t.id) FILTER (WHERE t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date < CURRENT_TIMESTAMP)::int AS "overdueCount",
+          CASE
+            WHEN p.status = 'blocked' OR COUNT(t.id) FILTER (WHERE t.status = 'blocked' AND t.priority = 'urgent') > 0 OR COUNT(t.id) FILTER (WHERE t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date <= CURRENT_TIMESTAMP - INTERVAL '7 days') > 0 THEN 'red'
+            WHEN COUNT(t.id) FILTER (WHERE t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date < CURRENT_TIMESTAMP) > 0 OR COUNT(t.id) FILTER (WHERE t.status = 'blocked') > 0 THEN 'amber'
+            ELSE 'green'
+          END AS "healthStatus"
         FROM projects p
         LEFT JOIN tasks t ON t.project_id = p.id
         WHERE p.organization_id = $1
@@ -72,6 +78,8 @@ export async function executeTool(
         taskCount: number;
         completedTaskCount: number;
         blockedTaskCount: number;
+        overdueCount: number;
+        healthStatus: string;
       }>(sql, params);
 
       const sourceRecords = res.rows.map((p) => ({
@@ -220,11 +228,14 @@ export async function executeTool(
           t.due_date AS "dueDate",
           t.project_id AS "projectId",
           p.name AS "projectName",
+          TRIM(u.first_name || ' ' || u.last_name) AS "assignedUserName",
+          u.email AS "assignedUserEmail",
           t.created_at AS "createdAt",
           t.updated_at AS "updatedAt",
           (t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date < CURRENT_TIMESTAMP) AS "isOverdue"
         FROM tasks t
         LEFT JOIN projects p ON p.id = t.project_id
+        LEFT JOIN users u ON u.id = t.assigned_to AND u.organization_id = t.organization_id
         WHERE t.organization_id = $1
       `;
 
@@ -264,6 +275,8 @@ export async function executeTool(
         dueDate: string | null;
         projectId?: string;
         projectName?: string;
+        assignedUserName?: string | null;
+        assignedUserEmail?: string | null;
         createdAt: string;
         updatedAt: string;
         isOverdue: boolean;
@@ -275,6 +288,8 @@ export async function executeTool(
         name: t.title,
         status: t.status,
         priority: t.priority,
+        ownerName: t.assignedUserName || undefined,
+        ownerEmail: t.assignedUserEmail || undefined,
         dueDate: t.dueDate || undefined,
       }));
 
@@ -327,6 +342,8 @@ export async function executeTool(
               due_date: string;
               project_id: string;
               project_name: string;
+              owner_name: string | null;
+              owner_email: string | null;
               days_overdue: number;
             }>(
               `SELECT
@@ -337,9 +354,12 @@ export async function executeTool(
                 t.due_date,
                 t.project_id,
                 p.name AS project_name,
+                TRIM(u.first_name || ' ' || u.last_name) AS owner_name,
+                u.email AS owner_email,
                 ROUND(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - t.due_date)) / 86400)::int AS days_overdue
               FROM tasks t
               LEFT JOIN projects p ON p.id = t.project_id
+              LEFT JOIN users u ON u.id = t.assigned_to AND u.organization_id = t.organization_id
               WHERE t.organization_id = $1
                 AND t.status != 'done'
                 AND t.due_date IS NOT NULL
@@ -387,6 +407,8 @@ export async function executeTool(
           status: t.status,
           priority: t.priority,
           dueDate: t.due_date,
+          ownerName: t.owner_name || undefined,
+          ownerEmail: t.owner_email || undefined,
         })),
         ...overdueCollectionsRes.rows.map((c) => ({
           type: 'collection' as const,

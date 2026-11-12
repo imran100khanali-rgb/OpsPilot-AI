@@ -159,6 +159,10 @@ export async function fetchProjects(
   return request<PaginatedResult<Project>>(`/api/v1/projects${qs}`);
 }
 
+export async function fetchProject(id: string) {
+  return request<Project>(`/api/v1/projects/${id}`);
+}
+
 export async function createProject(payload: {
   name: string;
   description?: string;

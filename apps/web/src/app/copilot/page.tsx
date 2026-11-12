@@ -21,28 +21,28 @@ import {
 const SUGGESTED_QUESTIONS = [
   {
     icon: '🚨',
-    title: 'Overdue Deliverables',
-    query: 'What tasks or deliverables are currently overdue past SLA?',
+    title: 'Salesforce Projects at Risk',
+    query: 'Which Salesforce projects are at risk and why?',
   },
   {
-    icon: '🚧',
-    title: 'Blocked Projects',
-    query: 'Which projects are currently blocked or have blocked tasks?',
+    icon: '📅',
+    title: 'Severe Overdue Deliverables',
+    query: 'Show deliverables overdue by more than seven days.',
   },
   {
-    icon: '✍️',
-    title: 'Pending Approvals',
-    query: 'Are there any pending approvals requiring executive sign-off?',
+    icon: '⏳',
+    title: 'Aging Approvals (>48h)',
+    query: 'Which approvals have been pending for over 48 hours?',
   },
   {
-    icon: '📊',
-    title: 'Executive Metrics',
-    query: 'Give me an executive summary of our operational metrics and completion rate.',
+    icon: '🛡️',
+    title: 'Delivery Blocker Ownership',
+    query: 'Who owns the highest-priority delivery blockers?',
   },
   {
-    icon: '💰',
-    title: 'Receivables & Cash Flow',
-    query: 'Do we have any overdue invoices or collection follow-ups?',
+    icon: '🎯',
+    title: 'Management Priorities',
+    query: 'What should management address first today?',
   },
 ];
 
@@ -205,10 +205,11 @@ export default function CopilotPage() {
                 gap: '0.5rem',
               }}
             >
-              <span>✨</span> OpsPilot AI Business Copilot
+              <span>✨</span> iBirds AI Delivery Intelligence Copilot
             </h1>
             <p style={{ color: 'var(--text-secondary)', fontSize: '0.88rem', margin: 0 }}>
-              Natural-language operational intelligence grounded in parameterized organization data.
+              Salesforce & Cloud Delivery Command Center AI Assistant. Grounded in authorized
+              organization records.
             </p>
           </div>
 
@@ -492,7 +493,7 @@ export default function CopilotPage() {
                     ✨
                   </div>
                   <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.4rem' }}>
-                    How can OpsPilot assist your team today?
+                    How can iBirds Delivery Copilot assist leadership today?
                   </h2>
                   <p
                     style={{
@@ -502,8 +503,9 @@ export default function CopilotPage() {
                       marginBottom: '1.75rem',
                     }}
                   >
-                    Ask questions regarding active projects, overdue SLAs, dependency blockers, and
-                    executive approvals. All insights are organization-scoped and grounded.
+                    Inquire about Salesforce delivery streams, 7+ day overdue milestones, blocker
+                    root causes, and aging executive release approvals. Grounded in live database
+                    facts.
                   </p>
 
                   <div
@@ -573,7 +575,7 @@ export default function CopilotPage() {
                           marginBottom: '0.25rem',
                         }}
                       >
-                        {isUser ? 'You' : 'OpsPilot AI Business Copilot'}
+                        {isUser ? 'You' : 'iBirds Delivery Copilot'}
                       </div>
 
                       <div

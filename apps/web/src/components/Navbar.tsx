@@ -13,6 +13,12 @@ export interface NavbarProps {
 
 const DEMO_ACCOUNTS = [
   {
+    label: 'iBirds Delivery Lead',
+    role: 'Director',
+    email: 'lead@ibirds.example.com',
+    password: 'DemoPass123!',
+  },
+  {
     label: 'Acme Director',
     role: 'Director',
     email: 'director@acme.example.com',
@@ -150,11 +156,13 @@ export const Navbar: React.FC<NavbarProps> = ({ onLoginSuccess, onLogout }) => {
         <div className="container header-inner">
           <div className="brand-section">
             <Link href="/" className="brand-logo">
-              <div className="brand-icon">OP</div>
+              <div className="brand-icon" style={{ backgroundColor: '#0284c7' }}>
+                iB
+              </div>
               <div>
-                <div className="brand-title">OpsPilot AI</div>
+                <div className="brand-title">iBirds AI Delivery Intelligence</div>
                 <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 600 }}>
-                  Operations Intelligence
+                  Salesforce &amp; Cloud Delivery Command Center • OpsPilot AI
                 </div>
               </div>
             </Link>
@@ -306,7 +314,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onLoginSuccess, onLogout }) => {
                   id="login-modal-title"
                   style={{ fontSize: '1.25rem', fontWeight: 700, margin: 0 }}
                 >
-                  Sign In to OpsPilot AI
+                  Sign In to iBirds Delivery Intelligence
                 </h2>
                 <p
                   style={{

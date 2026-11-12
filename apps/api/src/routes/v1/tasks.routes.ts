@@ -68,16 +68,18 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     const countRes = await query<{ total: string }>(countSql, queryParams);
     const total = parseInt(countRes.rows[0]?.total || '0', 10);
 
-    // Sorting
-    const validSortCols: Record<string, string> = {
-      due_date: 't.due_date NULLS LAST',
-      priority: `CASE t.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END`,
-      status: 't.status',
-      title: 't.title',
-      created_at: 't.created_at',
+    // Sorting - strict allowlist and valid PostgreSQL syntax
+    const sortDir: 'ASC' | 'DESC' = filters.sortOrder?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    const sortExpressions: Record<string, string> = {
+      due_date: `t.due_date ${sortDir} NULLS LAST`,
+      priority: `CASE t.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 ELSE 5 END ${sortDir}`,
+      status: `t.status ${sortDir}`,
+      title: `t.title ${sortDir}`,
+      created_at: `t.created_at ${sortDir}`,
     };
-    const sortCol = validSortCols[filters.sortBy] || 't.created_at';
-    const sortDir = filters.sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    const orderClause = sortExpressions[filters.sortBy] || `t.created_at ${sortDir}`;
 
     const offset = (filters.page - 1) * filters.limit;
     queryParams.push(filters.limit, offset);
@@ -103,7 +105,7 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
       LEFT JOIN projects p ON p.id = t.project_id
       LEFT JOIN users u ON u.id = t.assigned_to
       ${whereClause}
-      ORDER BY ${sortCol} ${sortDir}
+      ORDER BY ${orderClause}, t.id ASC
       LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}
     `;
 

@@ -253,9 +253,77 @@ export class LocalDeterministicProvider implements AiProvider {
       };
     }
 
-    // Intent: Overdue work / tasks past deadline / collections
+    // Intent 1: Delivery Blockers / Blocker Ownership
+    if (
+      (lower.includes('block') || lower.includes('impediment')) &&
+      (lower.includes('who') ||
+        lower.includes('owner') ||
+        lower.includes('highest') ||
+        lower.includes('priority'))
+    ) {
+      return {
+        content: null,
+        toolCalls: [
+          {
+            id: 'call_blockers_' + Date.now(),
+            name: 'get_tasks',
+            arguments: { status: 'blocked', limit: 10 },
+          },
+        ],
+        tokensUsed: 25,
+        model: this.name,
+      };
+    }
+
+    // Intent 2: Aging Approvals (>48 Hours) / Approvals
+    if (
+      lower.includes('48 hour') ||
+      lower.includes('48h') ||
+      lower.includes('aging approval') ||
+      lower.includes('approval') ||
+      lower.includes('sign off') ||
+      lower.includes('pending review')
+    ) {
+      return {
+        content: null,
+        toolCalls: [
+          {
+            id: 'call_approvals_' + Date.now(),
+            name: 'get_pending_approvals',
+            arguments: { limit: 10 },
+          },
+        ],
+        tokensUsed: 20,
+        model: this.name,
+      };
+    }
+
+    // Intent 3: Projects at risk / Salesforce delivery streams
+    if (
+      lower.includes('at risk') ||
+      lower.includes('risk and why') ||
+      (lower.includes('salesforce') &&
+        (lower.includes('project') || lower.includes('risk') || lower.includes('stream')))
+    ) {
+      return {
+        content: null,
+        toolCalls: [
+          {
+            id: 'call_projects_risk_' + Date.now(),
+            name: 'get_projects',
+            arguments: { status: 'all', limit: 10 },
+          },
+        ],
+        tokensUsed: 25,
+        model: this.name,
+      };
+    }
+
+    // Intent 4: Overdue work / tasks past deadline / 7+ days overdue
     if (
       lower.includes('overdue') ||
+      lower.includes('seven days') ||
+      lower.includes('7 days') ||
       lower.includes('past due') ||
       lower.includes('late') ||
       lower.includes('sla breach') ||
@@ -277,28 +345,29 @@ export class LocalDeterministicProvider implements AiProvider {
       };
     }
 
-    // Intent: Approvals
+    // Intent 5: What should management address first today / Executive priorities
     if (
-      lower.includes('approval') ||
-      lower.includes('sign off') ||
-      lower.includes('pending review') ||
-      lower.includes('approve')
+      lower.includes('first today') ||
+      lower.includes('address first') ||
+      lower.includes('priority today') ||
+      lower.includes('focus today') ||
+      lower.includes('what should management')
     ) {
       return {
         content: null,
         toolCalls: [
           {
-            id: 'call_approvals_' + Date.now(),
-            name: 'get_pending_approvals',
-            arguments: { limit: 10 },
+            id: 'call_overdue_priority_' + Date.now(),
+            name: 'get_overdue_work',
+            arguments: { category: 'all', limit: 10 },
           },
         ],
-        tokensUsed: 20,
+        tokensUsed: 25,
         model: this.name,
       };
     }
 
-    // Intent: Blocked work / blocked projects / blockers
+    // Intent: General Blocked work / blocked projects
     if (lower.includes('blocked') || lower.includes('blocker') || lower.includes('stuck')) {
       return {
         content: null,
@@ -425,15 +494,24 @@ export class LocalDeterministicProvider implements AiProvider {
             taskCount: number;
             completedTaskCount: number;
             blockedTaskCount: number;
+            overdueCount?: number;
+            healthStatus?: string;
           }>;
           if (projects.length === 0) {
-            combinedAnswer += `No matching projects were found within your organization.\n`;
+            combinedAnswer += `No matching delivery projects were found within your organization.\n`;
           } else {
-            combinedAnswer += `Found ${projects.length} project(s):\n`;
+            combinedAnswer += `Found ${projects.length} delivery project stream(s):\n`;
             for (const p of projects) {
+              const badge =
+                p.healthStatus === 'red'
+                  ? '🔴 RED'
+                  : p.healthStatus === 'amber'
+                    ? '🟡 AMBER'
+                    : '🟢 GREEN';
               const blockedText =
                 p.blockedTaskCount > 0 ? ` (${p.blockedTaskCount} task(s) blocked)` : '';
-              combinedAnswer += `• **${p.name}** — Status: \`${p.status}\`, Tasks: ${p.completedTaskCount}/${p.taskCount} completed${blockedText}.\n`;
+              const overdueText = (p.overdueCount || 0) > 0 ? ` (${p.overdueCount} overdue)` : '';
+              combinedAnswer += `• **${p.name}** [${badge}] — Status: \`${p.status}\`, Deliverables: ${p.completedTaskCount}/${p.taskCount} completed${blockedText}${overdueText}.\n`;
             }
           }
         } else if (toolName === 'get_tasks') {
@@ -445,15 +523,19 @@ export class LocalDeterministicProvider implements AiProvider {
             dueDate?: string;
             isOverdue?: boolean;
             projectName?: string;
+            assignedUserName?: string;
           }>;
           if (tasks.length === 0) {
-            combinedAnswer += `No matching tasks were found within your organization.\n`;
+            combinedAnswer += `No matching deliverables or tasks were found within your organization.\n`;
           } else {
-            combinedAnswer += `Found ${tasks.length} task(s):\n`;
+            combinedAnswer += `Found ${tasks.length} deliverable(s):\n`;
             for (const t of tasks) {
               const overdueText = t.isOverdue ? ' ⚠️ **OVERDUE**' : '';
               const due = t.dueDate ? ` (Due: ${new Date(t.dueDate).toLocaleDateString()})` : '';
-              combinedAnswer += `• **${t.title}** — Status: \`${t.status}\`, Priority: \`${t.priority}\`${due}${overdueText} [${t.projectName || 'General'}].\n`;
+              const owner = t.assignedUserName
+                ? ` — Owner: **${t.assignedUserName}**`
+                : ' — Owner: *Unassigned*';
+              combinedAnswer += `• **${t.title}** [${t.projectName || 'General'}] — Status: \`${t.status}\`, Priority: \`${t.priority}\`${due}${overdueText}${owner}.\n`;
             }
           }
         } else if (toolName === 'get_overdue_work') {
@@ -463,6 +545,7 @@ export class LocalDeterministicProvider implements AiProvider {
               days_overdue: number;
               priority: string;
               project_name: string;
+              owner_name?: string;
             }>;
             overdueCollections: Array<{
               customer_name: string;
@@ -473,17 +556,19 @@ export class LocalDeterministicProvider implements AiProvider {
           };
           const totalOverdue = (overdueTasks?.length || 0) + (overdueCollections?.length || 0);
           if (totalOverdue === 0) {
-            combinedAnswer += `No overdue work or overdue collections found in your organization. All operational deadlines are currently on schedule.\n`;
+            combinedAnswer += `No overdue deliverables or invoices found in your organization. All delivery milestones are currently on schedule.\n`;
           } else {
             combinedAnswer += `Identified ${totalOverdue} overdue item(s) requiring attention:\n`;
             if (overdueTasks && overdueTasks.length > 0) {
-              combinedAnswer += `\n**Overdue Tasks (${overdueTasks.length}):**\n`;
+              combinedAnswer += `\n**Overdue Deliverables (${overdueTasks.length}):**\n`;
               for (const t of overdueTasks) {
-                combinedAnswer += `• **${t.title}** (${t.project_name || 'General'}) — ${t.days_overdue} day(s) overdue. Priority: \`${t.priority}\`.\n`;
+                const owner = t.owner_name ? ` (Owner: **${t.owner_name}**)` : ' (*Unassigned*)';
+                const severity = t.days_overdue >= 7 ? ' 🚨 **>7 DAYS PAST SLA**' : '';
+                combinedAnswer += `• **${t.title}** [${t.project_name || 'General'}] — ${t.days_overdue} day(s) overdue${severity}. Priority: \`${t.priority}\`${owner}.\n`;
               }
             }
             if (overdueCollections && overdueCollections.length > 0) {
-              combinedAnswer += `\n**Overdue Invoices / Collections (${overdueCollections.length}):**\n`;
+              combinedAnswer += `\n**Overdue Invoices / Receivables (${overdueCollections.length}):**\n`;
               for (const c of overdueCollections) {
                 combinedAnswer += `• **${c.customer_name}** (${c.invoice_number}) — $${Number(c.amount).toLocaleString()} overdue by ${c.days_overdue} day(s).\n`;
               }
@@ -497,11 +582,16 @@ export class LocalDeterministicProvider implements AiProvider {
             created_at: string;
           }>;
           if (approvals.length === 0) {
-            combinedAnswer += `No pending approvals found. All workflow requests have been decided.\n`;
+            combinedAnswer += `No pending approvals found. All delivery gate sign-offs have been decided.\n`;
           } else {
             combinedAnswer += `There are ${approvals.length} pending approval request(s) awaiting review:\n`;
             for (const a of approvals) {
-              combinedAnswer += `• **${a.title}** requested by ${a.requester_name} on ${new Date(a.created_at).toLocaleDateString()}.\n`;
+              const hours = Math.round((Date.now() - new Date(a.created_at).getTime()) / 3600000);
+              const isAging = hours >= 48;
+              const agingBadge = isAging
+                ? ` ⚠️ **AGING (>48h SLA breached - ${Math.round(hours / 24)} days)**`
+                : ` (${hours}h pending)`;
+              combinedAnswer += `• **${a.title}** requested by ${a.requester_name} on ${new Date(a.created_at).toLocaleDateString()}${agingBadge}.\n`;
             }
           }
         } else if (toolName === 'get_dashboard_metrics') {

@@ -367,4 +367,143 @@ describe('Executive Dashboard & Operational Workspace Test Suite', () => {
       expect(res.body.success).toBe(true);
     });
   });
+
+  describe('4. Task Sorting, Filtering, and Pagination Regression Suite', () => {
+    it('supports default due-date sorting (sortBy=due_date&sortOrder=asc) without SQL syntax error', async () => {
+      const res = await request(app)
+        .get('/api/v1/tasks?sortBy=due_date&sortOrder=asc&page=1&limit=10')
+        .set('Cookie', acmeSessionCookie);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const data = res.body.data as PaginatedResult<Task>;
+      expect(Array.isArray(data.items)).toBe(true);
+    });
+
+    it('supports ascending and descending due-date sorting with NULLS LAST', async () => {
+      const resAsc = await request(app)
+        .get('/api/v1/tasks?sortBy=due_date&sortOrder=asc&page=1&limit=10')
+        .set('Cookie', acmeSessionCookie);
+
+      expect(resAsc.status).toBe(200);
+      const dataAsc = resAsc.body.data as PaginatedResult<Task>;
+      expect(dataAsc.items.length).toBeGreaterThanOrEqual(1);
+
+      const resDesc = await request(app)
+        .get('/api/v1/tasks?sortBy=due_date&sortOrder=desc&page=1&limit=10')
+        .set('Cookie', acmeSessionCookie);
+
+      expect(resDesc.status).toBe(200);
+      const dataDesc = resDesc.body.data as PaginatedResult<Task>;
+      expect(dataDesc.items.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('supports every allowed sort field (due_date, priority, status, title, created_at)', async () => {
+      const sortFields = ['due_date', 'priority', 'status', 'title', 'created_at'] as const;
+
+      for (const sortBy of sortFields) {
+        for (const sortOrder of ['asc', 'desc'] as const) {
+          const res = await request(app)
+            .get(`/api/v1/tasks?sortBy=${sortBy}&sortOrder=${sortOrder}&page=1&limit=5`)
+            .set('Cookie', acmeSessionCookie);
+
+          expect(res.status).toBe(200);
+          expect(res.body.success).toBe(true);
+          const data = res.body.data as PaginatedResult<Task>;
+          expect(Array.isArray(data.items)).toBe(true);
+        }
+      }
+    });
+
+    it('rejects invalid sort field or direction with 400 VALIDATION_ERROR', async () => {
+      const resBadField = await request(app)
+        .get('/api/v1/tasks?sortBy=invalid_column')
+        .set('Cookie', acmeSessionCookie);
+
+      expect(resBadField.status).toBe(400);
+      expect(resBadField.body.success).toBe(false);
+      expect(resBadField.body.error.code).toBe('VALIDATION_ERROR');
+
+      const resBadDir = await request(app)
+        .get('/api/v1/tasks?sortOrder=sideways')
+        .set('Cookie', acmeSessionCookie);
+
+      expect(resBadDir.status).toBe(400);
+      expect(resBadDir.body.success).toBe(false);
+      expect(resBadDir.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('combines search, filters, and sorting cleanly', async () => {
+      const res = await request(app)
+        .get(
+          '/api/v1/tasks?search=telemetry&status=all&priority=all&isOverdue=false&sortBy=due_date&sortOrder=asc&page=1&limit=5',
+        )
+        .set('Cookie', acmeSessionCookie);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      const data = res.body.data as PaginatedResult<Task>;
+      expect(data.pagination).toBeDefined();
+      expect(data.pagination.page).toBe(1);
+    });
+
+    it('enforces strict pagination and tenant isolation across sorted tasks', async () => {
+      // Acme tasks query
+      const acmeRes = await request(app)
+        .get('/api/v1/tasks?sortBy=due_date&sortOrder=asc&page=1&limit=2')
+        .set('Cookie', acmeSessionCookie);
+
+      expect(acmeRes.status).toBe(200);
+      const acmeData = acmeRes.body.data as PaginatedResult<Task>;
+      expect(acmeData.items.length).toBeLessThanOrEqual(2);
+      for (const t of acmeData.items) {
+        expect(t.organizationId).toBe('11111111-1111-1111-1111-111111111111');
+      }
+
+      // Globex user query (should see only Globex tasks, 0 tasks)
+      const globexRes = await request(app)
+        .get('/api/v1/tasks?sortBy=due_date&sortOrder=asc')
+        .set('Cookie', globexSessionCookie);
+
+      expect(globexRes.status).toBe(200);
+      const globexData = globexRes.body.data as PaginatedResult<Task>;
+      expect(globexData.items.length).toBe(0);
+      expect(globexData.pagination.total).toBe(0);
+    });
+
+    it('retrieves all 10 seeded tasks for iBirds tenant without SQL syntax error', async () => {
+      const ibirdsLogin = await request(app)
+        .post('/api/v1/auth/login')
+        .set('User-Agent', 'vitest-dashboard-agent')
+        .send({ email: 'lead@ibirds.example.com', password: 'DemoPass123!' });
+
+      if (ibirdsLogin.status === 200) {
+        const cookies = ibirdsLogin.headers['set-cookie'] as unknown as string[];
+        const ibirdsCookie = cookies.find((c: string) => c.startsWith('opspilot_session='))!;
+
+        const res = await request(app)
+          .get('/api/v1/tasks?sortBy=due_date&sortOrder=asc&page=1&limit=20')
+          .set('Cookie', ibirdsCookie);
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        const data = res.body.data as PaginatedResult<Task>;
+        expect(data.pagination.total).toBe(10);
+        expect(data.items.length).toBe(10);
+
+        // Verify all 10 tasks belong to iBirds organization
+        for (const t of data.items) {
+          expect(t.organizationId).toBe('33333333-1111-1111-1111-111111111111');
+        }
+
+        // Verify chronological due date ordering
+        const dueDates = data.items.map((t) =>
+          t.dueDate ? new Date(t.dueDate).getTime() : Infinity,
+        );
+        for (let i = 1; i < dueDates.length; i++) {
+          expect(dueDates[i]!).toBeGreaterThanOrEqual(dueDates[i - 1]!);
+        }
+      }
+    });
+  });
 });

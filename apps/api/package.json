@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "db:migrate": "tsx src/db/migrator.ts migrate",
     "db:rollback": "tsx src/db/migrator.ts rollback",
-    "db:status": "tsx src/db/migrator.ts status"
+    "db:status": "tsx src/db/migrator.ts status",
+    "db:seed:demo": "tsx src/db/seedDemo.ts"
   },
   "dependencies": {
     "@opspilot/shared": "*",

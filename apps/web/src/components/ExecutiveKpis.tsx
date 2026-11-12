@@ -55,97 +55,112 @@ export const ExecutiveKpis: React.FC<ExecutiveKpisProps> = ({ kpis, loading }) =
   }
 
   return (
-    <div className="kpi-grid" aria-label="Executive KPI Metrics">
-      {/* 1. Active Projects */}
+    <div className="kpi-grid" aria-label="Executive Delivery Intelligence KPIs">
+      {/* 1. Active Delivery Streams */}
       <div className="card kpi-card" id="kpi-active-projects">
         <div className="kpi-title">
-          <span>Active Projects</span>
-          <span style={{ fontSize: '1rem' }}>📁</span>
+          <span>Active Delivery Streams</span>
+          <span style={{ fontSize: '1rem' }}>🚀</span>
         </div>
         <div className="kpi-value">{kpis.activeProjects}</div>
         <div className="kpi-footer">
-          <span className="badge badge-success">Live Workstreams</span>
+          <span className="badge badge-success">Live Streams</span>
           <span>of {kpis.totalProjects} total</span>
         </div>
       </div>
 
-      {/* 2. Overdue Tasks */}
-      <div
-        className="card kpi-card"
-        id="kpi-overdue-tasks"
-        style={{
-          borderLeft: kpis.overdueTasks > 0 ? '4px solid #ef4444' : undefined,
-        }}
-      >
-        <div className="kpi-title">
-          <span>Overdue Tasks</span>
-          <span style={{ fontSize: '1rem' }}>⚠️</span>
-        </div>
-        <div
-          className="kpi-value"
-          style={{ color: kpis.overdueTasks > 0 ? '#ef4444' : 'var(--text-primary)' }}
-        >
-          {kpis.overdueTasks}
-        </div>
-        <div className="kpi-footer">
-          <span className={kpis.overdueTasks > 0 ? 'badge badge-danger' : 'badge badge-success'}>
-            {kpis.overdueTasks > 0 ? 'Target SLA Breached' : 'All Tasks On-Track'}
-          </span>
-        </div>
-      </div>
-
-      {/* 3. Blocked Projects */}
+      {/* 2. Projects at Risk */}
       <div
         className="card kpi-card"
         id="kpi-blocked-projects"
         style={{
-          borderLeft: kpis.blockedProjects > 0 ? '4px solid #f59e0b' : undefined,
+          borderLeft: kpis.blockedProjects > 0 ? '4px solid #ef4444' : '4px solid #10b981',
         }}
       >
         <div className="kpi-title">
-          <span>Blocked Projects</span>
-          <span style={{ fontSize: '1rem' }}>🚫</span>
+          <span>Projects at Risk</span>
+          <span style={{ fontSize: '1rem' }}>🛡️</span>
         </div>
         <div
           className="kpi-value"
-          style={{ color: kpis.blockedProjects > 0 ? '#f59e0b' : 'var(--text-primary)' }}
+          style={{ color: kpis.blockedProjects > 0 ? '#ef4444' : 'var(--text-primary)' }}
         >
           {kpis.blockedProjects}
         </div>
         <div className="kpi-footer">
-          <span
-            className={kpis.blockedProjects > 0 ? 'badge badge-warning' : 'badge badge-success'}
-          >
-            {kpis.blockedProjects > 0 ? 'Impediments Identified' : 'Zero Blockers'}
+          <span className={kpis.blockedProjects > 0 ? 'badge badge-danger' : 'badge badge-success'}>
+            {kpis.blockedProjects > 0 ? 'Impediments Identified' : 'Zero Blockers (Green)'}
           </span>
         </div>
       </div>
 
-      {/* 4. Pending Approvals */}
-      <div className="card kpi-card" id="kpi-pending-approvals">
+      {/* 3. Overdue Deliverables */}
+      <div
+        className="card kpi-card"
+        id="kpi-overdue-tasks"
+        style={{
+          borderLeft: kpis.overdueTasks > 0 ? '4px solid #f59e0b' : undefined,
+        }}
+      >
         <div className="kpi-title">
-          <span>Pending Approvals</span>
+          <span>Overdue Deliverables</span>
+          <span style={{ fontSize: '1rem' }}>⚠️</span>
+        </div>
+        <div
+          className="kpi-value"
+          style={{ color: kpis.overdueTasks > 0 ? '#f59e0b' : 'var(--text-primary)' }}
+        >
+          {kpis.overdueTasks}
+        </div>
+        <div className="kpi-footer">
+          <span className={kpis.overdueTasks > 0 ? 'badge badge-warning' : 'badge badge-success'}>
+            {kpis.overdueTasks > 0 ? 'Target SLA Breached' : 'Deliverables On-Schedule'}
+          </span>
+        </div>
+      </div>
+
+      {/* 4. Aging Approvals (>48 Hours) */}
+      <div
+        className="card kpi-card"
+        id="kpi-pending-approvals"
+        style={{
+          borderLeft: (kpis.agingApprovals || 0) > 0 ? '4px solid #ef4444' : undefined,
+        }}
+      >
+        <div className="kpi-title">
+          <span>Aging Approvals (&gt;48h)</span>
           <span style={{ fontSize: '1rem' }}>⏳</span>
         </div>
-        <div className="kpi-value">{kpis.pendingApprovals}</div>
+        <div
+          className="kpi-value"
+          style={{
+            color: (kpis.agingApprovals || 0) > 0 ? '#ef4444' : 'var(--text-primary)',
+          }}
+        >
+          {kpis.agingApprovals !== undefined ? kpis.agingApprovals : kpis.pendingApprovals}
+        </div>
         <div className="kpi-footer">
-          <span className="badge badge-info">Director / Admin Signoff</span>
+          <span
+            className={(kpis.agingApprovals || 0) > 0 ? 'badge badge-danger' : 'badge badge-info'}
+          >
+            {(kpis.agingApprovals || 0) > 0 ? 'SLA Threshold Exceeded' : 'Sign-offs Current'}
+          </span>
+          <span>{kpis.pendingApprovals} pending</span>
         </div>
       </div>
 
-      {/* 5. Collection Follow-ups */}
+      {/* 5. Milestone Completion Rate & Receivables Follow-ups */}
       <div className="card kpi-card" id="kpi-collection-followups">
         <div className="kpi-title">
-          <span>Collection Follow-ups</span>
-          <span style={{ fontSize: '1rem' }}>💰</span>
+          <span>Milestone Completion</span>
+          <span style={{ fontSize: '1rem' }}>📊</span>
         </div>
-        <div className="kpi-value">{kpis.collectionFollowUps}</div>
+        <div className="kpi-value">{kpis.taskCompletionRate}%</div>
         <div className="kpi-footer">
-          <span
-            className={kpis.collectionFollowUps > 0 ? 'badge badge-warning' : 'badge badge-success'}
-          >
-            {kpis.collectionFollowUps > 0 ? 'Actionable Invoices' : 'Collections Current'}
+          <span className="badge badge-success">
+            {kpis.completedTasks}/{kpis.totalTasks} Done
           </span>
+          <span>{kpis.collectionFollowUps} invoices</span>
         </div>
       </div>
     </div>

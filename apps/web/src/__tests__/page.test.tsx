@@ -5,7 +5,9 @@ import {
   DashboardSummaryResponse,
   DashboardKpis,
   RiskItem,
+  RiskSourceRecord,
   Project,
+  ProjectHealthStatus,
   Task,
   User,
   Organization,
@@ -100,6 +102,47 @@ describe('Web Application Operations Workspace Contracts & KPIs', () => {
     expect(project.taskCount).toBe(5);
     expect(task.isOverdue).toBe(true);
     expect(task.priority).toBe('urgent');
+  });
+
+  it('validates extended delivery intelligence contract fields (healthStatus, owner attribution, agingApprovals)', () => {
+    const healthStatus: ProjectHealthStatus = 'green';
+    const project: Project = {
+      id: 'proj-ibirds-1',
+      organizationId: 'org-ibirds',
+      name: 'Salesforce CPQ & Billing Rollout',
+      status: 'active',
+      healthStatus,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const kpis: DashboardKpis = {
+      activeProjects: 5,
+      overdueTasks: 1,
+      blockedProjects: 0,
+      pendingApprovals: 2,
+      collectionFollowUps: 0,
+      totalProjects: 6,
+      totalTasks: 20,
+      completedTasks: 15,
+      taskCompletionRate: 75,
+      agingApprovals: 1,
+    };
+
+    const riskSource: RiskSourceRecord = {
+      type: 'task',
+      id: 'task-101',
+      name: 'LWC Custom CPQ Pricing Calculator',
+      status: 'in_progress',
+      dueDate: new Date().toISOString(),
+      ownerName: 'Marcus Manager',
+      ownerEmail: 'manager@acme.example.com',
+    };
+
+    expect(project.healthStatus).toBe('green');
+    expect(kpis.agingApprovals).toBe(1);
+    expect(riskSource.ownerName).toBe('Marcus Manager');
+    expect(riskSource.ownerEmail).toBe('manager@acme.example.com');
   });
 });
 

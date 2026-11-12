@@ -1,4 +1,5 @@
 export type ProjectStatus = 'active' | 'completed' | 'archived' | 'paused' | 'blocked';
+export type ProjectHealthStatus = 'green' | 'amber' | 'red';
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done' | 'blocked';
 export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
@@ -10,6 +11,12 @@ export interface Project {
   name: string;
   description?: string;
   status: ProjectStatus;
+  healthStatus?: ProjectHealthStatus;
+  overdueDeliverables?: number;
+  targetGoLive?: string;
+  practiceArea?: string;
+  deliveryLead?: string;
+  primaryRisk?: string;
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
@@ -41,10 +48,12 @@ export interface Approval {
   organizationId: string;
   taskId?: string;
   requestedBy: string;
+  requestedByName?: string;
   reviewedBy?: string;
   title: string;
   status: ApprovalStatus;
   notes?: string;
+  isAging?: boolean;
   decidedAt?: string;
   createdAt: string;
 }
@@ -75,6 +84,7 @@ export interface DashboardKpis {
   totalTasks: number;
   completedTasks: number;
   taskCompletionRate: number;
+  agingApprovals?: number;
 }
 
 export type RiskCategory =
@@ -90,6 +100,8 @@ export interface RiskSourceRecord {
   dueDate?: string;
   projectId?: string;
   projectName?: string;
+  ownerName?: string;
+  ownerEmail?: string;
 }
 
 export interface RiskItem {

@@ -117,12 +117,17 @@ export async function getDashboardSummary(
     overdue_count: '0',
   };
 
-  // 4. Pending Approvals
-  const approvalsRes = await query<{ count: string }>(
-    `SELECT COUNT(*) AS count FROM approvals WHERE organization_id = $1 AND status = 'pending'`,
+  // 4. Pending Approvals & Aging Approvals (>48h)
+  const approvalsRes = await query<{ count: string; aging_count: string }>(
+    `SELECT
+       COUNT(*) AS count,
+       COUNT(*) FILTER (WHERE created_at <= CURRENT_TIMESTAMP - INTERVAL '48 hours') AS aging_count
+     FROM approvals
+     WHERE organization_id = $1 AND status = 'pending'`,
     [orgId],
   );
   const pendingApprovals = parseInt(approvalsRes.rows[0]?.count || '0', 10);
+  const agingApprovals = parseInt(approvalsRes.rows[0]?.aging_count || '0', 10);
 
   // 5. Collection Follow-ups
   const collectionsRes = await query<{ count: string }>(
@@ -152,12 +157,13 @@ export async function getDashboardSummary(
     totalTasks,
     completedTasks,
     taskCompletionRate,
+    agingApprovals,
   };
 
   // 6. Deterministic Risk Rules Evaluation
   const risks: RiskItem[] = [];
 
-  // A. Overdue Tasks Risk Evaluation
+  // A. Overdue Tasks Risk Evaluation (with tenant-safe Owner Attribution)
   const overdueTasksQuery = `
     SELECT
       t.id,
@@ -167,9 +173,12 @@ export async function getDashboardSummary(
       t.due_date,
       t.project_id,
       p.name AS project_name,
+      TRIM(u.first_name || ' ' || u.last_name) AS owner_name,
+      u.email AS owner_email,
       ROUND(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - t.due_date)) / 86400)::int AS days_overdue
     FROM tasks t
     LEFT JOIN projects p ON p.id = t.project_id
+    LEFT JOIN users u ON u.id = t.assigned_to AND u.organization_id = t.organization_id
     WHERE t.organization_id = $1
       AND t.status != 'done'
       AND t.due_date IS NOT NULL
@@ -185,6 +194,8 @@ export async function getDashboardSummary(
     due_date: Date;
     project_id: string;
     project_name: string;
+    owner_name: string | null;
+    owner_email: string | null;
     days_overdue: number;
   }>(overdueTasksQuery, [orgId]);
 
@@ -192,12 +203,14 @@ export async function getDashboardSummary(
     const days = Math.max(1, t.days_overdue || 1);
     const severity =
       t.priority === 'urgent' || days >= 7 ? 'critical' : t.priority === 'high' ? 'high' : 'medium';
+    const ownerInfo = t.owner_name ? `Assigned to ${t.owner_name}` : 'Unassigned deliverable';
+
     risks.push({
       id: `risk-task-overdue-${t.id}`,
       category: 'overdue_task',
       severity,
-      title: `Overdue Task: ${t.title}`,
-      explanation: `Task '${t.title}' in project '${t.project_name || 'General'}' was due on ${new Date(t.due_date).toLocaleDateString()} (${days} day${days > 1 ? 's' : ''} overdue). Priority is ${t.priority}.`,
+      title: `Overdue Deliverable: ${t.title}`,
+      explanation: `Task '${t.title}' in project '${t.project_name || 'General'}' was due on ${new Date(t.due_date).toLocaleDateString()} (${days} day${days > 1 ? 's' : ''} overdue past SLA). Priority is ${t.priority}. (${ownerInfo}).`,
       sourceRecord: {
         type: 'task',
         id: t.id,
@@ -206,14 +219,16 @@ export async function getDashboardSummary(
         dueDate: new Date(t.due_date).toISOString(),
         projectId: t.project_id,
         projectName: t.project_name,
+        ownerName: t.owner_name || undefined,
+        ownerEmail: t.owner_email || undefined,
       },
       detectedAt: new Date().toISOString(),
       suggestedAction:
-        'Review task blockers, reassign resources, or adjust sprint milestone target.',
+        'Review delivery blockers, reassign resources, or adjust sprint milestone target.',
     });
   }
 
-  // B. Blocked Work Risk Evaluation
+  // B. Blocked Work Risk Evaluation (with tenant-safe Owner Attribution)
   const blockedTasksQuery = `
     SELECT
       t.id,
@@ -221,9 +236,12 @@ export async function getDashboardSummary(
       t.status,
       t.priority,
       t.project_id,
-      p.name AS project_name
+      p.name AS project_name,
+      TRIM(u.first_name || ' ' || u.last_name) AS owner_name,
+      u.email AS owner_email
     FROM tasks t
     LEFT JOIN projects p ON p.id = t.project_id
+    LEFT JOIN users u ON u.id = t.assigned_to AND u.organization_id = t.organization_id
     WHERE t.organization_id = $1 AND t.status = 'blocked'
     LIMIT 5
   `;
@@ -234,15 +252,19 @@ export async function getDashboardSummary(
     priority: string;
     project_id: string;
     project_name: string;
+    owner_name: string | null;
+    owner_email: string | null;
   }>(blockedTasksQuery, [orgId]);
 
   for (const bt of blockedTaskRows.rows) {
+    const ownerInfo = bt.owner_name ? `Assigned to ${bt.owner_name}` : 'Unassigned deliverable';
+
     risks.push({
       id: `risk-task-blocked-${bt.id}`,
       category: 'blocked_task',
       severity: bt.priority === 'urgent' ? 'critical' : 'high',
-      title: `Blocked Task: ${bt.title}`,
-      explanation: `Task '${bt.title}' in project '${bt.project_name || 'General'}' is currently in blocked state. Execution is halted.`,
+      title: `Blocked Deliverable: ${bt.title}`,
+      explanation: `Task '${bt.title}' in project '${bt.project_name || 'General'}' is currently in blocked state. Execution is halted. (${ownerInfo}).`,
       sourceRecord: {
         type: 'task',
         id: bt.id,
@@ -250,17 +272,26 @@ export async function getDashboardSummary(
         status: bt.status,
         projectId: bt.project_id,
         projectName: bt.project_name,
+        ownerName: bt.owner_name || undefined,
+        ownerEmail: bt.owner_email || undefined,
       },
       detectedAt: new Date().toISOString(),
       suggestedAction: 'Escalate dependency blocker in daily standup and unblock owner.',
     });
   }
 
-  // Blocked Projects directly
+  // Blocked Projects directly (with owner attribution)
   const blockedProjectsListQuery = `
-    SELECT id, name, status, description
-    FROM projects
-    WHERE organization_id = $1 AND status = 'blocked'
+    SELECT
+      p.id,
+      p.name,
+      p.status,
+      p.description,
+      TRIM(u.first_name || ' ' || u.last_name) AS owner_name,
+      u.email AS owner_email
+    FROM projects p
+    LEFT JOIN users u ON u.id = p.created_by AND u.organization_id = p.organization_id
+    WHERE p.organization_id = $1 AND p.status = 'blocked'
     LIMIT 5
   `;
   const blockedProjectRows = await query<{
@@ -268,6 +299,8 @@ export async function getDashboardSummary(
     name: string;
     status: string;
     description: string;
+    owner_name: string | null;
+    owner_email: string | null;
   }>(blockedProjectsListQuery, [orgId]);
 
   for (const bp of blockedProjectRows.rows) {
@@ -275,20 +308,84 @@ export async function getDashboardSummary(
       id: `risk-project-blocked-${bp.id}`,
       category: 'blocked_project',
       severity: 'critical',
-      title: `Blocked Project: ${bp.name}`,
-      explanation: `Project '${bp.name}' status is flagged as blocked. Critical milestone delivery is at risk.`,
+      title: `Blocked Stream: ${bp.name}`,
+      explanation: `Project '${bp.name}' status is flagged as blocked. Critical milestone delivery is at risk. Lead: ${bp.owner_name || 'Unassigned'}.`,
       sourceRecord: {
         type: 'project',
         id: bp.id,
         name: bp.name,
         status: bp.status,
+        ownerName: bp.owner_name || undefined,
+        ownerEmail: bp.owner_email || undefined,
       },
       detectedAt: new Date().toISOString(),
       suggestedAction: 'Schedule executive sync with project sponsor to resolve blockers.',
     });
   }
 
-  // C. Overdue Collections Risk Evaluation
+  // C. Stalled Approvals Risk Evaluation (>48 Hours SLA breached)
+  const stalledApprovalsQuery = `
+    SELECT
+      a.id,
+      a.title,
+      a.created_at,
+      a.task_id,
+      t.title AS task_title,
+      t.project_id,
+      p.name AS project_name,
+      TRIM(u.first_name || ' ' || u.last_name) AS requested_by_name,
+      u.email AS requested_by_email,
+      ROUND(EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - a.created_at)) / 86400)::int AS days_pending
+    FROM approvals a
+    LEFT JOIN tasks t ON t.id = a.task_id
+    LEFT JOIN projects p ON p.id = t.project_id
+    LEFT JOIN users u ON u.id = a.requested_by AND u.organization_id = a.organization_id
+    WHERE a.organization_id = $1
+      AND a.status = 'pending'
+      AND a.created_at <= CURRENT_TIMESTAMP - INTERVAL '48 hours'
+    ORDER BY a.created_at ASC
+    LIMIT 5
+  `;
+  const stalledApprovalRows = await query<{
+    id: string;
+    title: string;
+    created_at: Date;
+    task_id: string | null;
+    task_title: string | null;
+    project_id: string | null;
+    project_name: string | null;
+    requested_by_name: string | null;
+    requested_by_email: string | null;
+    days_pending: number;
+  }>(stalledApprovalsQuery, [orgId]);
+
+  for (const sa of stalledApprovalRows.rows) {
+    const days = Math.max(2, sa.days_pending || 2);
+    const requester = sa.requested_by_name || 'Delivery Team Member';
+    const stream = sa.project_name ? `stream '${sa.project_name}'` : 'operations governance';
+
+    risks.push({
+      id: `risk-approval-stalled-${sa.id}`,
+      category: 'stalled_approval',
+      severity: days >= 5 ? 'critical' : 'high',
+      title: `Aging Approval (>48h): ${sa.title}`,
+      explanation: `Approval '${sa.title}' requested by ${requester} has been pending for ${days} days (>48-hour SLA threshold). Affecting ${stream}.`,
+      sourceRecord: {
+        type: 'approval',
+        id: sa.id,
+        name: sa.title,
+        status: 'pending',
+        projectId: sa.project_id || undefined,
+        projectName: sa.project_name || undefined,
+        ownerName: sa.requested_by_name || undefined,
+        ownerEmail: sa.requested_by_email || undefined,
+      },
+      detectedAt: new Date().toISOString(),
+      suggestedAction: 'Director / Executive review required immediately to unblock release gate.',
+    });
+  }
+
+  // D. Overdue Collections Risk Evaluation
   const overdueCollectionsQuery = `
     SELECT id, customer_name, invoice_number, amount, currency, due_date
     FROM collections
@@ -334,6 +431,12 @@ export async function getDashboardSummary(
           r.category === 'blocked_task' ||
           r.sourceRecord.status === 'blocked'
         );
+      }
+      if (status === 'overdue') {
+        return r.category === 'overdue_task' || r.category === 'overdue_collection';
+      }
+      if (status === 'pending') {
+        return r.category === 'stalled_approval' || r.sourceRecord.status === 'pending';
       }
       return r.sourceRecord.status === status;
     });

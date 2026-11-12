@@ -67,6 +67,29 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     queryParams.push(filters.limit, offset);
 
     const dataSql = `
+      WITH p_tasks AS (
+        SELECT
+          t.project_id,
+          COUNT(t.id)::int AS task_count,
+          COUNT(t.id) FILTER (WHERE t.status = 'done')::int AS completed_count,
+          COUNT(t.id) FILTER (WHERE t.status = 'blocked')::int AS blocked_count,
+          COUNT(t.id) FILTER (WHERE t.status = 'blocked' AND t.priority = 'urgent')::int AS urgent_blocked_count,
+          COUNT(t.id) FILTER (WHERE t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date < CURRENT_TIMESTAMP)::int AS overdue_count,
+          COUNT(t.id) FILTER (WHERE t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date <= CURRENT_TIMESTAMP - INTERVAL '7 days')::int AS severely_overdue_count,
+          MIN(t.due_date) FILTER (WHERE t.status != 'done' AND t.due_date IS NOT NULL) AS next_due_date
+        FROM tasks t
+        WHERE t.organization_id = $1
+        GROUP BY t.project_id
+      ),
+      p_approvals AS (
+        SELECT
+          t.project_id,
+          COUNT(a.id) FILTER (WHERE a.status = 'pending' AND a.created_at <= CURRENT_TIMESTAMP - INTERVAL '48 hours')::int AS aging_approval_count
+        FROM approvals a
+        JOIN tasks t ON t.id = a.task_id
+        WHERE a.organization_id = $1
+        GROUP BY t.project_id
+      )
       SELECT
         p.id,
         p.organization_id AS "organizationId",
@@ -74,15 +97,33 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
         p.description,
         p.status,
         p.created_by AS "createdBy",
+        TRIM(u.first_name || ' ' || u.last_name) AS "deliveryLead",
         p.created_at AS "createdAt",
         p.updated_at AS "updatedAt",
-        COUNT(t.id)::int AS "taskCount",
-        COUNT(t.id) FILTER (WHERE t.status = 'done')::int AS "completedTaskCount",
-        COUNT(t.id) FILTER (WHERE t.status = 'blocked')::int AS "blockedTaskCount"
+        COALESCE(pt.task_count, 0) AS "taskCount",
+        COALESCE(pt.completed_count, 0) AS "completedTaskCount",
+        COALESCE(pt.blocked_count, 0) AS "blockedTaskCount",
+        COALESCE(pt.overdue_count, 0) AS "overdueDeliverables",
+        pt.next_due_date AS "targetGoLive",
+        CASE
+          WHEN p.status = 'blocked' OR COALESCE(pt.urgent_blocked_count, 0) > 0 OR COALESCE(pt.severely_overdue_count, 0) > 0 THEN 'red'
+          WHEN COALESCE(pa.aging_approval_count, 0) > 0 OR COALESCE(pt.overdue_count, 0) > 0 OR COALESCE(pt.blocked_count, 0) > 0 THEN 'amber'
+          ELSE 'green'
+        END AS "healthStatus",
+        CASE
+          WHEN p.status = 'blocked' THEN 'Project status blocked'
+          WHEN COALESCE(pt.urgent_blocked_count, 0) > 0 THEN 'Urgent delivery blocker present'
+          WHEN COALESCE(pt.severely_overdue_count, 0) > 0 THEN 'Milestone overdue past 7 days'
+          WHEN COALESCE(pa.aging_approval_count, 0) > 0 THEN 'Release approval pending > 48h'
+          WHEN COALESCE(pt.overdue_count, 0) > 0 THEN 'Deliverable overdue past target SLA'
+          WHEN COALESCE(pt.blocked_count, 0) > 0 THEN 'Task blocked awaiting dependency'
+          ELSE 'On track — zero active blockers'
+        END AS "primaryRisk"
       FROM projects p
-      LEFT JOIN tasks t ON t.project_id = p.id
+      LEFT JOIN users u ON u.id = p.created_by AND u.organization_id = p.organization_id
+      LEFT JOIN p_tasks pt ON pt.project_id = p.id
+      LEFT JOIN p_approvals pa ON pa.project_id = p.id
       ${whereClause}
-      GROUP BY p.id
       ORDER BY ${sortCol} ${sortDir}
       LIMIT $${queryParams.length - 1} OFFSET $${queryParams.length}
     `;
@@ -115,22 +156,63 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     const orgId = req.user!.organizationId;
 
     const result = await query<Project>(
-      `SELECT
+      `WITH p_tasks AS (
+         SELECT
+           t.project_id,
+           COUNT(t.id)::int AS task_count,
+           COUNT(t.id) FILTER (WHERE t.status = 'done')::int AS completed_count,
+           COUNT(t.id) FILTER (WHERE t.status = 'blocked')::int AS blocked_count,
+           COUNT(t.id) FILTER (WHERE t.status = 'blocked' AND t.priority = 'urgent')::int AS urgent_blocked_count,
+           COUNT(t.id) FILTER (WHERE t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date < CURRENT_TIMESTAMP)::int AS overdue_count,
+           COUNT(t.id) FILTER (WHERE t.status != 'done' AND t.due_date IS NOT NULL AND t.due_date <= CURRENT_TIMESTAMP - INTERVAL '7 days')::int AS severely_overdue_count,
+           MIN(t.due_date) FILTER (WHERE t.status != 'done' AND t.due_date IS NOT NULL) AS next_due_date
+         FROM tasks t
+         WHERE t.organization_id = $2 AND t.project_id = $1
+         GROUP BY t.project_id
+       ),
+       p_approvals AS (
+         SELECT
+           t.project_id,
+           COUNT(a.id) FILTER (WHERE a.status = 'pending' AND a.created_at <= CURRENT_TIMESTAMP - INTERVAL '48 hours')::int AS aging_approval_count
+         FROM approvals a
+         JOIN tasks t ON t.id = a.task_id
+         WHERE a.organization_id = $2 AND t.project_id = $1
+         GROUP BY t.project_id
+       )
+       SELECT
          p.id,
          p.organization_id AS "organizationId",
          p.name,
          p.description,
          p.status,
          p.created_by AS "createdBy",
+         TRIM(u.first_name || ' ' || u.last_name) AS "deliveryLead",
          p.created_at AS "createdAt",
          p.updated_at AS "updatedAt",
-         COUNT(t.id)::int AS "taskCount",
-         COUNT(t.id) FILTER (WHERE t.status = 'done')::int AS "completedTaskCount",
-         COUNT(t.id) FILTER (WHERE t.status = 'blocked')::int AS "blockedTaskCount"
+         COALESCE(pt.task_count, 0) AS "taskCount",
+         COALESCE(pt.completed_count, 0) AS "completedTaskCount",
+         COALESCE(pt.blocked_count, 0) AS "blockedTaskCount",
+         COALESCE(pt.overdue_count, 0) AS "overdueDeliverables",
+         pt.next_due_date AS "targetGoLive",
+         CASE
+           WHEN p.status = 'blocked' OR COALESCE(pt.urgent_blocked_count, 0) > 0 OR COALESCE(pt.severely_overdue_count, 0) > 0 THEN 'red'
+           WHEN COALESCE(pa.aging_approval_count, 0) > 0 OR COALESCE(pt.overdue_count, 0) > 0 OR COALESCE(pt.blocked_count, 0) > 0 THEN 'amber'
+           ELSE 'green'
+         END AS "healthStatus",
+         CASE
+           WHEN p.status = 'blocked' THEN 'Project status blocked'
+           WHEN COALESCE(pt.urgent_blocked_count, 0) > 0 THEN 'Urgent delivery blocker present'
+           WHEN COALESCE(pt.severely_overdue_count, 0) > 0 THEN 'Milestone overdue past 7 days'
+           WHEN COALESCE(pa.aging_approval_count, 0) > 0 THEN 'Release approval pending > 48h'
+           WHEN COALESCE(pt.overdue_count, 0) > 0 THEN 'Deliverable overdue past target SLA'
+           WHEN COALESCE(pt.blocked_count, 0) > 0 THEN 'Task blocked awaiting dependency'
+           ELSE 'On track — zero active blockers'
+         END AS "primaryRisk"
        FROM projects p
-       LEFT JOIN tasks t ON t.project_id = p.id
-       WHERE p.id = $1 AND p.organization_id = $2
-       GROUP BY p.id`,
+       LEFT JOIN users u ON u.id = p.created_by AND u.organization_id = p.organization_id
+       LEFT JOIN p_tasks pt ON pt.project_id = p.id
+       LEFT JOIN p_approvals pa ON pa.project_id = p.id
+       WHERE p.id = $1 AND p.organization_id = $2`,
       [projectId, orgId],
     );
 
